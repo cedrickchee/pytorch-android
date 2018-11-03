@@ -18,7 +18,7 @@ We'll walk you through every step, from problem all the way to building and depl
 
 ## Features, Funtionalities and TODO
 
-- [X] iOS (Swift/Objective-C/C++) with Caffe2
+- [X] Android (Java/C++) with Caffe2
 - [x] Test SqueezeNet v1.1 model with your own video stream from camera
 - [x] Live (real-time) detection
 - [ ] Performance optimization
@@ -33,6 +33,7 @@ We'll walk you through every step, from problem all the way to building and depl
 - [ ] Upload pre-trained models
 - [ ] Bug fixes
 - [ ] Fix intermittent crashes
+- [ ] React Native native module
 
 ## Android Project
 
