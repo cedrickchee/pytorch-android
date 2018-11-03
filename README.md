@@ -2,7 +2,7 @@
 
 PyTorch on Android is a project to demo how to use [PyTorch](https://pytorch.org/) to build an Android mobile application doing real time object classification.
 
-![demo](https://media.giphy.com/media/oOLw8fRszs5Ris7rVj/giphy.gif)
+![demo](https://thumbs.gfycat.com/MiniatureBlissfulGermanspaniel-size_restricted.gif)
 
 ## Goal
 
