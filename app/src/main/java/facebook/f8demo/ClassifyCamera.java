@@ -50,7 +50,7 @@ import java.util.concurrent.TimeUnit;
 import static android.view.View.SYSTEM_UI_FLAG_IMMERSIVE;
 
 public class ClassifyCamera extends AppCompatActivity {
-    private static final String TAG = "F8DEMO";
+    private static final String TAG = "FASTAIDEMO";
     private static final int REQUEST_CAMERA_PERMISSION = 200;
 
     private TextureView textureView;

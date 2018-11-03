@@ -2,6 +2,7 @@ apply plugin: 'com.android.application'
 
 android {
     compileSdkVersion 25
+    buildToolsVersion "25.0.0"
     defaultConfig {
         applicationId "facebook.f8demo"
         minSdkVersion 22
@@ -18,7 +19,7 @@ android {
         ndk {
             // Specifies the ABI configurations of your native
             // libraries Gradle should build and package with your APK.
-            abiFilters  'armeabi-v7a'
+            abiFilters 'armeabi-v7a'
         }
     }
     buildTypes {
@@ -35,11 +36,10 @@ android {
     packagingOptions {
         pickFirst 'lib/armeabi-v7a/libgnustl_shared.so'
     }
-
 }
 
 dependencies {
-    compile fileTree(dir: 'libs', include: ['*.jar', '*.so'])
+    compile fileTree(include: ['*.jar', '*.so'], dir: 'libs')
     androidTestCompile('com.android.support.test.espresso:espresso-core:2.2.2', {
         exclude group: 'com.android.support', module: 'support-annotations'
     })
