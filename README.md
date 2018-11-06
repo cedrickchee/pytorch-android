@@ -6,6 +6,8 @@ PyTorch on Android is a project to demo how to use [PyTorch](https://pytorch.org
 
 _The source code for the demo in this repo was originally based on [AICamera repo](https://github.com/bwasti/AICamera) unchanged._
 
+**Project Status**: Early release. Still in heavy development. What this means is, things might be moved around quickly and things will break.
+
 ## Goal
 
 Make it easier to ship and test your neural network model in PyTorch on mobile devices.
@@ -18,7 +20,7 @@ We created a developer guide on [how to ship a convolutional neural network on A
 
 We'll walk you through every step, from problem all the way to building and deploying the Android app to mobile phones.
 
-## Features, Funtionalities and TODO
+## Features, Functionalities and TODO
 
 - [X] Android (Java/C++) with Caffe2
 - [x] Test SqueezeNet v1.1 model with your own video stream from camera
@@ -59,6 +61,7 @@ You can download the Android project source code by running this command:
 | ------------------ | ------------- | --------- |
 | Google Nexus 6P    | SqueezeNet    |  3.0      |
 | Samsung Note 8     | SqueezeNet    |  _TBD_    |
+| Galaxy Note 3      | SqueezeNet    |  4.0      |
 | Samsung Galaxy S7  | SqueezeNet    |  5.8      |
 | Google Pixel       | SqueezeNet    |  5.7      |
 
