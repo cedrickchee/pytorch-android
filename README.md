@@ -4,6 +4,8 @@ PyTorch on Android is a project to demo how to use [PyTorch](https://pytorch.org
 
 ![demo](https://thumbs.gfycat.com/MiniatureBlissfulGermanspaniel-size_restricted.gif)
 
+_The source code for the demo in this repo was originally based on [AICamera repo](https://github.com/bwasti/AICamera) unchanged._
+
 ## Goal
 
 Make it easier to ship and test your neural network model in PyTorch on mobile devices.
