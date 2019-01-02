@@ -4,16 +4,16 @@ PyTorch on Android is a project to demo how to use [PyTorch](https://pytorch.org
 
 ![demo](https://thumbs.gfycat.com/MiniatureBlissfulGermanspaniel-size_restricted.gif)
 
-_The source code for the demo in this repo was originally based on [AICamera repo](https://github.com/bwasti/AICamera) unchanged._
+_The source code for the demo in this repo was originally based on [AICamera repo](https://github.com/bwasti/AICamera) and as of 2018-12-31, the codebase was based on [Soumith's AICamera repo](https://github.com/soumith/AICamera)._
 
 **Project Status**:
 
-- Early release. Still in heavy development. What this means is, things might be moved around quickly and things will break.
 - 2018-12-31:
   - PyTorch core maintainers have updated AICamera example to work with latest PyTorch master. Once that PR is merged into PyTorch master, you can use the README below to get a working Android app, including changing the Protobuf with your own `init.pb` / `predict.pb` files.
   - [Android OSS fixes PR](https://github.com/pytorch/pytorch/pull/15509).
 - 2019-01-01:
-  - I have tested the Android OSS fixes with my own `resnet18_init_net_v1.pb` and `resnet18_predict_net_v1.pb` Protobuf files and the Android app is working fine.
+  - I have tested the Android OSS fixes with my own ResNet18 model (`resnet18_init_net_v1.pb` and `resnet18_predict_net_v1.pb` Protobuf files) and the Android app is working fine.
+- Early release. Still in heavy development. What this means is, important features are missing, things might be moved around quickly and things will break.
 
 ## Goal
 
@@ -93,6 +93,10 @@ cp -r build_android_x86/lib/lib* $AICAMERA_ROOT/app/src/main/jniLibs/x86/
 
 3. Build the AICamera app using the `Build -> Make Project` menu option in Android Studio
 
+_If you prefer not to build PyTorch from master, I have commited the files for Caffe2 bits into this git repo. Unfortunately, not all files are uploaded to GitHub due to file size limit (see TODO):_
+
+![static/images/github_file_size_limit.png]
+
 ### Developer Guide
 
 We created a developer guide on [how to ship a convolutional neural network (Resnet18 and SqueezeNet) on Android with PyTorch and Android Studio](https://github.com/cedrickchee/data-science-notebooks/blob/master/notebooks/deep_learning/fastai_mobile/README.md). Check it out!
@@ -119,6 +123,7 @@ We'll walk you through every step, from problem all the way to building and depl
 - [ ] Bug fixes
 - [x] Fix intermittent crashes
 - [ ] React Native native module
+- [ ] Upload large files `app/src/main/assets/resnet18_init_net_v1.pb`, `app/src/main/jniLibs/armeabi-v7a/libcaffe2_detectron_ops.so`, `app/src/main/jniLibs/armeabi-v7a/libonnx.a` to Google Drive and share it here
 
 ## Android Project
 
@@ -165,6 +170,26 @@ Scope of work for this project: _TBD_
 ## Other Useful Resources
 
 - [PyTorch and the merged Caffe2 repo](https://github.com/pytorch/pytorch)
+
+### PyTorch official forums
+
+- [PyTorch team response to "Getting error on Caffe2 AICamera example"](https://discuss.pytorch.org/t/getting-error-on-caffe2-aicamera-example/32828)
+- [Troubleshoot "Compiling PyTorch C++ for Android"](https://discuss.pytorch.org/t/compiling-pytorch-c-for-android/27384)
+
+### GitHub Issues and Commits
+
+- [t-vi's PyTorch proposal to "Improve build_android experience"](https://github.com/pytorch/pytorch/issues/13116)
+- [t-v1's work to get Android app working again](https://github.com/t-vi/pytorch/tree/caffe2_android)
+
+### Fast.ai
+
+- [Convert fast.ai trained image classification model to iOS app via ONNX and Apple Core ML](https://medium.com/@hungminhnguyen/convert-fast-ai-trained-image-classification-model-to-ios-app-via-onnx-and-apple-core-ml-5fdb612379f1) - _note: for older fastai library version 0.7_
+
+### Fast Neural Style Transfer (PyTorch → ONNX→ CoreML/NNAPI)
+
+- [Building a Neural Style Transfer app on iOS with PyTorch and CoreML](https://medium.com/@alexiscreuzot/building-a-neural-style-transfer-app-on-ios-with-pytorch-and-coreml-76e00cd14b28)
+  - [PyTorch fast neural style model with built-in ONNX exported](https://github.com/pytorch/examples/tree/master/fast_neural_style)
+- [Fast neural style transfer for Android Neural Networks API (NNAPI)](https://github.com/caffe2/AICamera-Style-Transfer)
 
 ## Support
 
