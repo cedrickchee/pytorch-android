@@ -125,7 +125,7 @@ We'll walk you through every step, from problem all the way to building and depl
 - [ ] Bug fixes
 - [x] Fix intermittent crashes
 - [ ] React Native native module
-- [x] Upload large files `app/src/main/assets/resnet18_init_net_v1.pb`, `app/src/main/jniLibs/armeabi-v7a/libcaffe2_detectron_ops.so`, `app/src/main/jniLibs/armeabi-v7a/libonnx.a` to Google Drive and share it here
+- [x] Upload large files from PyTorch 'build_android' to Google Drive and share it here
 
 ## Android Project
 
@@ -160,6 +160,14 @@ _^ the number of FPS is subjective to the camera photo (image) size you send to 
 ## Demo
 
 If building this repo is too much of a trouble for you, we also plan to put this in Google Play Store (TBD).
+
+## Network Graph Comparison
+
+Visualize SqueezeNet 1.1 prediction network serialized as Protobuf file:
+
+| Before update (Oct 2018)                       | After update (Jan 2019)                        |
+|:----------------------------------------------:|:----------------------------------------------:|
+| ![](static/images/squeeze_predict_net_viz.png) | ![](static/images/squeeze_predict_net_viz.png) |
 
 ## Performance
 
