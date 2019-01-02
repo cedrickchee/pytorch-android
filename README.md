@@ -12,7 +12,7 @@ _The source code for the demo in this repo was originally based on [AICamera rep
   - PyTorch core maintainers have updated AICamera example to work with latest PyTorch master. Once that PR is merged into PyTorch master, you can use the README below to get a working Android app, including changing the Protobuf with your own `init.pb` / `predict.pb` files.
   - [Android OSS fixes PR](https://github.com/pytorch/pytorch/pull/15509).
 - 2019-01-01:
-  - I have tested the Android OSS fixes with my own ResNet18 model (`resnet18_init_net_v1.pb` and `resnet18_predict_net_v1.pb` Protobuf files) and the Android app is working fine.
+  - I have tested the Android OSS fixes with my own ResNet18 pre-trained ImageNet model (`resnet18_init_net_v1.pb` and `resnet18_predict_net_v1.pb` Protobuf files) and the Android app is working fine.
 - Early release. Still in heavy development. What this means is, important features are missing, things might be moved around quickly and things will break.
 
 ## Goal
@@ -93,9 +93,11 @@ cp -r build_android_x86/lib/lib* $AICAMERA_ROOT/app/src/main/jniLibs/x86/
 
 3. Build the AICamera app using the `Build -> Make Project` menu option in Android Studio
 
-_If you prefer not to build PyTorch from master, I have commited the files for Caffe2 bits into this git repo. Unfortunately, not all files are uploaded to GitHub due to file size limit (see TODO):_
+_If you prefer not to build PyTorch from master, I have commited the files for the Caffe2 bits into this git repo. Unfortunately, not all files are uploaded to GitHub due to file size limit._
 
 ![](static/images/github_file_size_limit.png)
+
+_Grab the remaining 3 large files from my [Google Drive](https://drive.google.com/drive/folders/1e1lFa8W2rkA8M7mhahe9VSiSMnl0a4Ab?usp=sharing)._
 
 ### Developer Guide
 
@@ -123,7 +125,7 @@ We'll walk you through every step, from problem all the way to building and depl
 - [ ] Bug fixes
 - [x] Fix intermittent crashes
 - [ ] React Native native module
-- [ ] Upload large files `app/src/main/assets/resnet18_init_net_v1.pb`, `app/src/main/jniLibs/armeabi-v7a/libcaffe2_detectron_ops.so`, `app/src/main/jniLibs/armeabi-v7a/libonnx.a` to Google Drive and share it here
+- [x] Upload large files `app/src/main/assets/resnet18_init_net_v1.pb`, `app/src/main/jniLibs/armeabi-v7a/libcaffe2_detectron_ops.so`, `app/src/main/jniLibs/armeabi-v7a/libonnx.a` to Google Drive and share it here
 
 ## Android Project
 
