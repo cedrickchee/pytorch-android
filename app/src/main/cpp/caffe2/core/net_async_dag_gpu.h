@@ -4,7 +4,7 @@
 #include "caffe2/core/common.h"
 #include "caffe2/core/net_dag.h"
 #include "caffe2/core/workspace.h"
-#include "caffe2/proto/caffe2.pb.h"
+#include "caffe2/proto/caffe2_pb.h"
 
 namespace caffe2 {
 
@@ -20,14 +20,19 @@ class AsyncDAGNet : public DAGNetBase {
   bool SupportsAsync() override {
     return true;
   }
-  bool RunAt(const std::vector<int>& chain) override;
-  bool RunAsync() override;
+  bool RunAt(int chain_id, const std::vector<int>& chain) override;
 
  protected:
+  bool DoRunAsync() override;
+
   // Tracks whether a given op has had an event recorded in each
   // RunAt() iteration.
   std::vector<int32_t> eventRecorded_;
-  DISABLE_COPY_AND_ASSIGN(AsyncDAGNet);
+
+  int stream(const DeviceOption& device_option);
+  static thread_local std::vector<int> stream_counters_;
+
+  C10_DISABLE_COPY_AND_ASSIGN(AsyncDAGNet);
 };
 
 } // namespace caffe2

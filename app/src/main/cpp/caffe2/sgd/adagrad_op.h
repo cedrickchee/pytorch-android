@@ -1,6 +1,7 @@
 #pragma once
 
 #include "caffe2/core/operator.h"
+#include "caffe2/perfkernels/adagrad.h"
 
 namespace caffe2 {
 
@@ -16,10 +17,52 @@ void adagrad_update(
     float decay,
     const float* lr,
     Context* /*context*/) {
+  return adagrad_update(N, w, g, h, nw, nh, epsilon, decay, lr[0]);
+}
+
+template <typename Context>
+void adagrad_update_output_effective_lr(
+    int N,
+    const float* paramIn,
+    const float* gradIn,
+    const float* momentIn,
+    float* paramOut,
+    float* momentOut,
+    float* effectiveLROut,
+    float epsilon,
+    float decay,
+    const float* lr,
+    Context* /*context*/) {
   for (auto i = 0; i < N; ++i) {
-    float gi = g[i];
-    float hi = nh[i] = decay * h[i] + gi * gi;
-    nw[i] = w[i] + lr[0] * gi / (std::sqrt(hi) + epsilon);
+    float grad = gradIn[i];
+    float moment = momentOut[i] = decay * momentIn[i] + grad * grad;
+    float effective_lr = effectiveLROut[i] =
+        lr[0] / (std::sqrt(moment) + epsilon);
+    paramOut[i] = paramIn[i] + effective_lr * grad;
+  }
+}
+
+template <typename Context>
+void adagrad_update_output_effective_lr_and_update(
+    int N,
+    const float* paramIn,
+    const float* gradIn,
+    const float* momentIn,
+    float* paramOut,
+    float* momentOut,
+    float* effectiveLROut,
+    float* updateOut,
+    float epsilon,
+    float decay,
+    const float* lr,
+    Context* /*context*/) {
+  for (auto i = 0; i < N; ++i) {
+    float grad = gradIn[i];
+    float moment = momentOut[i] = decay * momentIn[i] + grad * grad;
+    float effective_lr = effectiveLROut[i] =
+        lr[0] / (std::sqrt(moment) + epsilon);
+    float update = updateOut[i] = effective_lr * grad;
+    paramOut[i] = paramIn[i] + update;
   }
 }
 
@@ -29,25 +72,69 @@ class AdagradOp final : public Operator<Context> {
   USE_OPERATOR_CONTEXT_FUNCTIONS;
   AdagradOp(const OperatorDef& operator_def, Workspace* ws)
       : Operator<Context>(operator_def, ws),
-        epsilon_(OperatorBase::GetSingleArgument<T>("epsilon", 1e-5f)),
-        decay_(OperatorBase::GetSingleArgument<T>("decay", 1.0f)) {}
+        epsilon_(this->template GetSingleArgument<T>("epsilon", 1e-5f)),
+        decay_(this->template GetSingleArgument<T>("decay", 1.0f)) {}
 
   bool RunOnDevice() override {
-    CAFFE_ENFORCE(Input(GRAD).size() == Input(MOMENT_1).size());
-    CAFFE_ENFORCE(Input(GRAD).size() == Input(PARAM).size());
+    CAFFE_ENFORCE_EQ(
+        Input(GRAD).numel(),
+        Input(MOMENT_1).numel(),
+        "PARAM size: ",
+        Input(PARAM).numel(),
+        ", GRAD size: ",
+        Input(GRAD).numel(),
+        ", MOMENT_1 size: ",
+        Input(MOMENT_1).numel(),
+        ", LR size: ",
+        Input(LR).numel());
+
+    CAFFE_ENFORCE_EQ(Input(GRAD).numel(), Input(PARAM).numel());
     Output(OUTPUT_PARAM)->ResizeLike(Input(PARAM));
     Output(OUTPUT_MOMENT_1)->ResizeLike(Input(MOMENT_1));
-    adagrad_update<Context>(
-        Input(GRAD).size(),
-        Input(PARAM).template data<T>(),
-        Input(GRAD).template data<T>(),
-        Input(MOMENT_1).template data<T>(),
-        Output(OUTPUT_PARAM)->template mutable_data<T>(),
-        Output(OUTPUT_MOMENT_1)->template mutable_data<T>(),
-        epsilon_,
-        decay_,
-        Input(LR).template data<T>(),
-        &context_);
+    if (OutputSize() == 2) {
+      adagrad_update<Context>(
+          Input(GRAD).numel(),
+          Input(PARAM).template data<T>(),
+          Input(GRAD).template data<T>(),
+          Input(MOMENT_1).template data<T>(),
+          Output(OUTPUT_PARAM)->template mutable_data<T>(),
+          Output(OUTPUT_MOMENT_1)->template mutable_data<T>(),
+          epsilon_,
+          decay_,
+          Input(LR).template data<T>(),
+          &context_);
+    } else if (OutputSize() == 3) {
+      Output(OUTPUT_EFFECTIVE_LR)->ResizeLike(Input(GRAD));
+      adagrad_update_output_effective_lr<Context>(
+          Input(GRAD).numel(),
+          Input(PARAM).template data<T>(),
+          Input(GRAD).template data<T>(),
+          Input(MOMENT_1).template data<T>(),
+          Output(OUTPUT_PARAM)->template mutable_data<T>(),
+          Output(OUTPUT_MOMENT_1)->template mutable_data<T>(),
+          Output(OUTPUT_EFFECTIVE_LR)->template mutable_data<T>(),
+          epsilon_,
+          decay_,
+          Input(LR).template data<T>(),
+          &context_);
+    } else {
+      Output(OUTPUT_EFFECTIVE_LR)->ResizeLike(Input(GRAD));
+      Output(OUTPUT_UPDATE)->ResizeLike(Input(GRAD));
+      adagrad_update_output_effective_lr_and_update<Context>(
+          Input(GRAD).numel(),
+          Input(PARAM).template data<T>(),
+          Input(GRAD).template data<T>(),
+          Input(MOMENT_1).template data<T>(),
+          Output(OUTPUT_PARAM)->template mutable_data<T>(),
+          Output(OUTPUT_MOMENT_1)->template mutable_data<T>(),
+          Output(OUTPUT_EFFECTIVE_LR)->template mutable_data<T>(),
+          Output(OUTPUT_UPDATE)->template mutable_data<T>(),
+          epsilon_,
+          decay_,
+          Input(LR).template data<T>(),
+          &context_);
+    }
+
     return true;
   }
 
@@ -55,7 +142,11 @@ class AdagradOp final : public Operator<Context> {
   T epsilon_;
   T decay_;
   INPUT_TAGS(PARAM, MOMENT_1, GRAD, LR);
-  OUTPUT_TAGS(OUTPUT_PARAM, OUTPUT_MOMENT_1);
+  OUTPUT_TAGS(
+      OUTPUT_PARAM,
+      OUTPUT_MOMENT_1,
+      OUTPUT_EFFECTIVE_LR,
+      OUTPUT_UPDATE);
 };
 
 template <typename T, class Context>
@@ -64,15 +155,15 @@ class SparseAdagradOp final : public Operator<Context> {
   USE_OPERATOR_CONTEXT_FUNCTIONS;
   SparseAdagradOp(const OperatorDef& operator_def, Workspace* ws)
       : Operator<Context>(operator_def, ws),
-        epsilon_(OperatorBase::GetSingleArgument<float>("epsilon", 1e-5f)) {}
+        epsilon_(this->template GetSingleArgument<float>("epsilon", 1e-5f)) {}
 
   bool RunOnDevice() override {
     // Enforce shapes
-    CAFFE_ENFORCE_EQ(Input(PARAM).size(), Input(MOMENT_1).size());
-    CAFFE_ENFORCE_EQ(Input(LR).size(), 1);
+    CAFFE_ENFORCE_EQ(Input(PARAM).numel(), Input(MOMENT_1).numel());
+    CAFFE_ENFORCE_EQ(Input(LR).numel(), 1);
     CAFFE_ENFORCE_EQ(
         Input(PARAM).size_from_dim(1),
-        Input(GRAD).size_from_dim(Input(INDICES).ndim()));
+        Input(GRAD).size_from_dim(Input(INDICES).dim()));
 
     return DispatchHelper<TensorTypes<int32_t, int64_t>>::call(
         this, Input(INDICES));
@@ -88,12 +179,12 @@ class SparseAdagradOp final : public Operator<Context> {
     auto* paramOut = Output(OUTPUT_PARAM)->template mutable_data<T>();
     auto* momentOut = Output(OUTPUT_MOMENT_1)->template mutable_data<T>();
 
-    auto n = Input(INDICES).size();
+    auto n = Input(INDICES).numel();
     if (n == 0) {
       return true;
     }
 
-    auto block_size = Input(GRAD).size() / n;
+    auto block_size = Input(GRAD).numel() / n;
     for (auto i = 0; i < n; ++i) {
       auto idx = indices[i];
       if (block_size == 1) {
@@ -106,7 +197,7 @@ class SparseAdagradOp final : public Operator<Context> {
 
 #ifndef NDEBUG
         CAFFE_ENFORCE_GE(
-            Input(PARAM).size(),
+            Input(PARAM).numel(),
             block_size + offsetIdx,
             this->debug_def().input(PARAM),
             ", out of bound,  idx:",
@@ -116,7 +207,7 @@ class SparseAdagradOp final : public Operator<Context> {
             " and block size:",
             block_size);
         CAFFE_ENFORCE_GE(
-            Input(GRAD).size(),
+            Input(GRAD).numel(),
             block_size + offsetI,
             this->debug_def().input(GRAD),
             ", out of bound idx, idx:",
@@ -152,15 +243,15 @@ class RowWiseSparseAdagradOp final : public Operator<Context> {
   USE_OPERATOR_CONTEXT_FUNCTIONS;
   RowWiseSparseAdagradOp(const OperatorDef& operator_def, Workspace* ws)
       : Operator<Context>(operator_def, ws),
-        epsilon_(OperatorBase::GetSingleArgument<float>("epsilon", 1e-5f)) {}
+        epsilon_(this->template GetSingleArgument<float>("epsilon", 1e-5f)) {}
 
   bool RunOnDevice() override {
     // Enforce shapes
-    CAFFE_ENFORCE_EQ(Input(PARAM).dims()[0], Input(MOMENT_1).size());
-    CAFFE_ENFORCE_EQ(Input(LR).size(), 1);
+    CAFFE_ENFORCE_EQ(Input(PARAM).sizes()[0], Input(MOMENT_1).numel());
+    CAFFE_ENFORCE_EQ(Input(LR).numel(), 1);
     CAFFE_ENFORCE_EQ(
         Input(PARAM).size_from_dim(1),
-        Input(GRAD).size_from_dim(Input(INDICES).ndim()));
+        Input(GRAD).size_from_dim(Input(INDICES).dim()));
 
     return DispatchHelper<TensorTypes<int32_t, int64_t>>::call(
         this, Input(INDICES));
@@ -176,12 +267,12 @@ class RowWiseSparseAdagradOp final : public Operator<Context> {
     auto* paramOut = Output(OUTPUT_PARAM)->template mutable_data<T>();
     auto* momentOut = Output(OUTPUT_MOMENT_1)->template mutable_data<T>();
 
-    auto n = Input(INDICES).size();
+    auto n = Input(INDICES).numel();
     if (n == 0) {
       return true;
     }
 
-    auto block_size = Input(GRAD).size() / n;
+    auto block_size = Input(GRAD).numel() / n;
 
     for (auto i = 0; i < n; ++i) {
       auto idx = indices[i];
@@ -195,7 +286,7 @@ class RowWiseSparseAdagradOp final : public Operator<Context> {
 
 #ifndef NDEBUG
         CAFFE_ENFORCE_GE(
-            Input(PARAM).size(),
+            Input(PARAM).numel(),
             block_size + offsetIdx,
             this->debug_def().input(PARAM),
             ", out of bound,  idx:",
@@ -205,7 +296,7 @@ class RowWiseSparseAdagradOp final : public Operator<Context> {
             " and block size:",
             block_size);
         CAFFE_ENFORCE_GE(
-            Input(GRAD).size(),
+            Input(GRAD).numel(),
             block_size + offsetI,
             this->debug_def().input(GRAD),
             ", out of bound idx, idx:",
@@ -225,8 +316,9 @@ class RowWiseSparseAdagradOp final : public Operator<Context> {
           hs += gj * gj;
         }
         float hi = nh[0] = h[0] + hs / block_size;
+        float step = lr[0] / (std::sqrt(hi) + epsilon_);
         for (auto j = 0; j < block_size; ++j) {
-          nw[j] = w[j] + lr[0] * g[j] / (std::sqrt(hi) + epsilon_);
+          nw[j] = w[j] + g[j] * step;
         }
       }
     }

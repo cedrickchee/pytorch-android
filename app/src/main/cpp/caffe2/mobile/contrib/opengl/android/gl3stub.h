@@ -1,4 +1,3 @@
-// Copyright 2004-present Facebook. All Rights Reserved.
 
 #ifndef __gl3_h_
 #define __gl3_h_

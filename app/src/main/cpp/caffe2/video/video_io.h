@@ -1,100 +1,80 @@
 #ifndef CAFFE2_VIDEO_VIDEO_IO_H_
 #define CAFFE2_VIDEO_VIDEO_IO_H_
 
+#include <caffe2/core/common.h>
+#include <caffe2/video/optical_flow.h>
+#include <caffe2/video/video_decoder.h>
 #include <opencv2/opencv.hpp>
 #include <random>
-#include "caffe/proto/caffe.pb.h"
 
-#include <iostream>
+#include <istream>
+#include <ostream>
 
 namespace caffe2 {
 
-void ImageChannelToBuffer(const cv::Mat* img, float* buffer, int c);
-
-void ImageDataToBuffer(
-    unsigned char* data_buffer,
-    int height,
-    int width,
-    float* buffer,
-    int c);
-
-int GetNumberOfFrames(std::string filename);
-
-double GetVideoFPS(std::string filename);
-
-void GetVideoMeta(std::string filename, int& number_of_frames, double& fps);
-
-void ClipTransform(
-    const float* clip_data,
-    const int channels,
-    const int length,
+CAFFE2_API void ClipTransformRGB(
+    const unsigned char* buffer_rgb,
+    const int multi_crop_count,
+    const int crop_height,
+    const int crop_width,
+    const int length_rgb,
+    const int channels_rgb,
+    const int sampling_rate_rgb,
     const int height,
     const int width,
-    const int crop,
-    const bool mirror,
-    float mean,
-    float std,
-    float* transformed_clip,
+    const int h_off,
+    const int w_off,
+    const int* multi_crop_h_off,
+    const int* multi_crop_w_off,
+    const bool mirror_me,
+    const bool color_jitter,
+    const float saturation,
+    const float brightness,
+    const float contrast,
+    const bool color_lighting,
+    const float color_lighting_std,
+    const std::vector<std::vector<float>>& color_lighting_eigvecs,
+    const std::vector<float>& color_lighting_eigvals,
+    const std::vector<float>& mean_rgb,
+    const std::vector<float>& inv_std_rgb,
     std::mt19937* randgen,
-    std::bernoulli_distribution* mirror_this_clip,
-    const bool use_center_crop);
+    float* transformed_clip);
 
-bool ReadClipFromFrames(
-    std::string input_dir,
-    const int start_frm,
-    std::string file_extension,
-    const int length,
+CAFFE2_API void ClipTransformOpticalFlow(
+    const unsigned char* buffer_rgb,
+    const int crop_height,
+    const int crop_width,
+    const int length_of,
+    const int channels_of,
+    const int sampling_rate_of,
     const int height,
     const int width,
-    const int sampling_rate,
-    float*& buffer);
+    const cv::Rect& rect,
+    const int channels_rgb,
+    const bool mirror_me,
+    const int flow_alg_type,
+    const int flow_data_type,
+    const int frame_gap_of,
+    const bool do_flow_aggregation,
+    const std::vector<float>& mean_of,
+    const std::vector<float>& inv_std_of,
+    float* transformed_clip);
 
-bool ReadClipFromVideoLazzy(
-    std::string filename,
-    const int start_frm,
-    const int length,
-    const int height,
-    const int width,
-    const int sampling_rate,
-    float*& buffer);
+CAFFE2_API void FreeDecodedData(
+    std::vector<std::unique_ptr<DecodedFrame>>& sampledFrames);
 
-bool ReadClipFromVideoSequential(
-    std::string filename,
-    const int start_frm,
-    const int length,
-    const int height,
-    const int width,
-    const int sampling_rate,
-    float*& buffer);
-
-bool ReadClipFromVideo(
-    std::string filename,
-    const int start_frm,
-    const int length,
-    const int height,
-    const int width,
-    const int sampling_rate,
-    float*& buffer);
-
-bool DecodeClipFromVideoFile(
-    std::string filename,
-    const int start_frm,
-    const int length,
-    const int height,
-    const int width,
-    const int sampling_rate,
-    float*& buffer);
-
-bool DecodeClipFromMemoryBuffer(
+CAFFE2_API bool DecodeMultipleClipsFromVideo(
     const char* video_buffer,
-    const int size,
+    const std::string& video_filename,
+    const int encoded_size,
+    const Params& params,
     const int start_frm,
-    const int length,
-    const int height,
-    const int width,
-    const int sampling_rate,
-    float*& buffer,
-    std::mt19937* randgen);
-}
+    const int clip_per_video,
+    const bool use_local_file,
+    int& height,
+    int& width,
+    std::vector<unsigned char*>& buffer_rgb);
+
+} // namespace caffe2
 
 #endif // CAFFE2_VIDEO_VIDEO_IO_H_

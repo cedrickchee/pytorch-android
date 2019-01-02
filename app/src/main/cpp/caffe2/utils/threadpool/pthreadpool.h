@@ -5,12 +5,6 @@
 
 #include "ThreadPoolCommon.h"
 
-#ifndef CAFFE2_THREADPOOL_MOBILE
-#error "mobile build state not defined"
-#endif
-
-// ThreadPool only used in mobile builds at the moment
-#if CAFFE2_THREADPOOL_MOBILE
 
 #include <stddef.h> // for size_t
 
@@ -20,7 +14,24 @@ typedef void (*pthreadpool_function_1d_t)(void*, size_t);
 typedef void (*pthreadpool_function_1d_tiled_t)(void*, size_t, size_t);
 typedef void (*pthreadpool_function_2d_t)(void*, size_t, size_t);
 typedef void (*pthreadpool_function_2d_tiled_t)(void*, size_t, size_t, size_t, size_t);
-typedef void (*pthreadpool_function_3d_t)(void*, size_t, size_t, size_t);
+typedef void (*pthreadpool_function_3d_tiled_t)(
+    void*,
+    size_t,
+    size_t,
+    size_t,
+    size_t,
+    size_t,
+    size_t);
+typedef void (*pthreadpool_function_4d_tiled_t)(
+    void*,
+    size_t,
+    size_t,
+    size_t,
+    size_t,
+    size_t,
+    size_t,
+    size_t,
+    size_t);
 
 #ifdef __cplusplus
 extern "C" {
@@ -92,6 +103,30 @@ void pthreadpool_compute_2d_tiled(
     size_t tile_i,
     size_t tile_j);
 
+void pthreadpool_compute_3d_tiled(
+    pthreadpool_t threadpool,
+    pthreadpool_function_3d_tiled_t function,
+    void* argument,
+    size_t range_i,
+    size_t range_j,
+    size_t range_k,
+    size_t tile_i,
+    size_t tile_j,
+    size_t tile_k);
+
+void pthreadpool_compute_4d_tiled(
+    pthreadpool_t threadpool,
+    pthreadpool_function_4d_tiled_t function,
+    void* argument,
+    size_t range_i,
+    size_t range_j,
+    size_t range_k,
+    size_t range_l,
+    size_t tile_i,
+    size_t tile_j,
+    size_t tile_k,
+    size_t tile_l);
+
 /**
  * Terminates threads in the thread pool and releases associated resources.
  *
@@ -105,7 +140,5 @@ void pthreadpool_destroy(pthreadpool_t threadpool);
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
-
-#endif // CAFFE2_THREADPOOL_MOBILE
 
 #endif // CAFFE2_UTILS_PTHREADPOOL_H_

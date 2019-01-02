@@ -1,83 +1,66 @@
-#pragma once
-#include "caffe2/operators/conv_pool_op_base.h"
+#ifndef CAFFE2_OPERATORS_CHANNEL_SHUFFLE_OP_H_
+#define CAFFE2_OPERATORS_CHANNEL_SHUFFLE_OP_H_
+
+#include "caffe2/core/context.h"
+#include "caffe2/core/logging.h"
+#include "caffe2/core/operator.h"
 
 namespace caffe2 {
 
-template <typename Context>
-class ChannelShuffleOp final : public ConvPoolOpBase<Context> {
+template <typename T, class Context>
+class ChannelShuffleOp final : public Operator<Context> {
  public:
-  USE_OPERATOR_FUNCTIONS(Context);
+  USE_OPERATOR_CONTEXT_FUNCTIONS;
+
   ChannelShuffleOp(const OperatorDef& operator_def, Workspace* ws)
-      : ConvPoolOpBase<Context>(operator_def, ws) {
-    OPERATOR_NEEDS_FEATURE(
-        this->order_ == StorageOrder::NCHW,
-        "ChannelShuffleOp only supports NCHW order");
+      : Operator<Context>(operator_def, ws),
+        order_(StringToStorageOrder(
+            this->template GetSingleArgument<std::string>("order", "NCHW"))),
+        OP_SINGLE_ARG(int, "group", group_, 1) {
+    CAFFE_ENFORCE_NE(order_, StorageOrder::UNKNOWN);
   }
 
-  bool RunOnDeviceWithOrderNCHW() override {
-    const auto& X = Input(0);
-    auto* Y = Output(0);
-    Y->ResizeLike(X);
-    const auto C = X.dim32(1);
-    CAFFE_ENFORCE(C % this->group_ == 0, "");
-    const auto K = C / this->group_;
-    const auto S = X.dim32(2) * X.dim32(3);
-    const auto G = this->group_;
-    for (auto n = 0; n < X.dim32(0); ++n) {
-      for (auto g = 0; g < G; ++g) {
-        // Scatter the group g block (of size KxS) to output channels
-        // g + 0 * G, g + 1 * G, g + 2 * G, g + G * (K - 1) etc.
-        math::CopyMatrix<Context>(
-            X.itemsize(),
-            K,
-            S,
-            X.template data<float>() + g * K * S + n * C * S,
-            S,
-            Y->template mutable_data<float>() + g * S + n * C * S,
-            G * S,
-            &context_);
-      }
-    }
-    return true;
+  bool RunOnDevice() override {
+    return order_ == StorageOrder::NCHW ? RunOnDeviceWithOrderNCHW()
+                                        : RunOnDeviceWithOrderNHWC();
   }
+
+  bool RunOnDeviceWithOrderNCHW();
+
+  bool RunOnDeviceWithOrderNHWC();
+
+ private:
+  const StorageOrder order_;
+  const int group_;
 };
 
-template <typename Context>
-class ChannelShuffleGradientOp final : public ConvPoolOpBase<Context> {
+template <typename T, class Context>
+class ChannelShuffleGradientOp final : public Operator<Context> {
  public:
-  USE_OPERATOR_FUNCTIONS(Context);
+  USE_OPERATOR_CONTEXT_FUNCTIONS;
+
   ChannelShuffleGradientOp(const OperatorDef& operator_def, Workspace* ws)
-      : ConvPoolOpBase<Context>(operator_def, ws) {
-    OPERATOR_NEEDS_FEATURE(
-        this->order_ == StorageOrder::NCHW,
-        "ChannelShuffleOp only supports NCHW order");
+      : Operator<Context>(operator_def, ws),
+        order_(StringToStorageOrder(
+            this->template GetSingleArgument<std::string>("order", "NCHW"))),
+        OP_SINGLE_ARG(int, "group", group_, 1) {
+    CAFFE_ENFORCE_NE(order_, StorageOrder::UNKNOWN);
   }
 
-  bool RunOnDeviceWithOrderNCHW() override {
-    const auto& dY = Input(0);
-    auto* dX = Output(0);
-    dX->ResizeLike(dY);
-    const auto C = dY.dim32(1);
-    CAFFE_ENFORCE(C % this->group_ == 0, "");
-    const auto K = C / this->group_;
-    const auto S = dY.dim32(2) * dY.dim32(3);
-    const auto G = this->group_;
-    for (auto n = 0; n < dY.dim32(0); ++n) {
-      for (auto g = 0; g < G; ++g) {
-        // Gather the group g block (of size KxS) from output channels
-        // g + 0 * G, g + 1 * G, g + 2 * G, g + G * (K - 1) etc.
-        math::CopyMatrix<Context>(
-            dY.itemsize(),
-            K,
-            S,
-            dY.template data<float>() + g * S + n * C * S,
-            G * S,
-            dX->template mutable_data<float>() + g * K * S + n * C * S,
-            S,
-            &context_);
-      }
-    }
-    return true;
+  bool RunOnDevice() override {
+    return order_ == StorageOrder::NCHW ? RunOnDeviceWithOrderNCHW()
+                                        : RunOnDeviceWithOrderNHWC();
   }
+
+  bool RunOnDeviceWithOrderNCHW();
+
+  bool RunOnDeviceWithOrderNHWC();
+
+ private:
+  const StorageOrder order_;
+  const int group_;
 };
-}
+
+} // namespace caffe2
+
+#endif // CAFFE2_OPERATORS_CHANNEL_SHUFFLE_OP_H_

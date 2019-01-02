@@ -1,9 +1,6 @@
-// Copyright 2004-present Facebook. All Rights Reserved.
-
-// pragma once
+#pragma once
 #include <cmath>
 
-namespace {
 struct point {
   int x;
   int y;
@@ -14,7 +11,6 @@ struct tile_descriptor {
   point tile_size;
   int tiles;
 };
-} // namespace
 
 namespace caffe2 {
 inline static void squareFactors(int N, int& r1, int& r2) {

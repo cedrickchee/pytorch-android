@@ -4,6 +4,7 @@
 
 #include "caffe2/contrib/gloo/common.h"
 #include "caffe2/core/operator.h"
+#include "caffe2/core/types.h"
 
 #include <gloo/algorithm.h>
 #include <gloo/common/error.h>
@@ -46,7 +47,7 @@ class BroadcastOp final : public Operator<Context> {
         signalFailure(ws_->GetBlob(status_blob_), ioe);
         return false;
       } else {
-        throw ioe;
+        throw;
       }
     }
     return true;
@@ -64,15 +65,15 @@ class BroadcastOp final : public Operator<Context> {
     }
 
     // Verify tensors all have same size
-    size_t size = Input(1).size();
+    size_t size = Input(1).numel();
     for (auto i = 2; i < InputSize(); i++) {
-      CAFFE_ENFORCE_EQ(Input(i).size(), size);
+      CAFFE_ENFORCE_EQ(Input(i).numel(), size);
     }
 
     // Verify tensors all have same size
-    TypeMeta meta = Input(1).meta();
+    TypeMeta meta = Input(1).dtype();
     for (auto i = 2; i < InputSize(); i++) {
-      CAFFE_ENFORCE(Input(i).meta() == meta);
+      CAFFE_ENFORCE(Input(i).dtype() == meta);
     }
 
     // Finally initialize the algorithm
@@ -89,54 +90,16 @@ class BroadcastOp final : public Operator<Context> {
   // An instance is updated every time this op runs and is compared
   // to the reference instance for equality. If any parameter has
   // changed from run to run, the initialized algorithm is invalid.
-  struct GlooParameters {
-    std::shared_ptr<::gloo::Context> context;
-    std::vector<const void*> inputs;
-    std::vector<void*> outputs;
-    size_t size;
-    TypeMeta meta;
-
-    template <typename T>
-    std::vector<const T*> getInputs() {
-      std::vector<const T*> result;
-      result.reserve(inputs.size());
-      for (auto& input : inputs) {
-        result.push_back(reinterpret_cast<T*>(input));
-      }
-      return result;
-    }
-
-    template <typename T>
-    std::vector<T*> getOutputs() {
-      std::vector<T*> result;
-      result.reserve(outputs.size());
-      for (auto& output : outputs) {
-        result.push_back(reinterpret_cast<T*>(output));
-      }
-      return result;
-    }
-
-    template <typename T>
-    bool IsType() const {
-      return meta.Match<T>();
-    }
-
-    bool operator==(GlooParameters const& other) const {
-      return context == other.context && inputs == other.inputs &&
-          outputs == other.outputs && size == other.size && meta == other.meta;
-    }
-  };
-
   void update(GlooParameters& params) {
     params.context = OperatorBase::Input<std::shared_ptr<::gloo::Context>>(0);
     params.inputs.resize(InputSize() - 1);
     params.outputs.resize(OutputSize());
     for (auto i = 0; i < params.inputs.size(); i++) {
-      params.inputs[i] = Input(i + 1).template raw_data();
-      params.outputs[i] = Output(i)->template raw_mutable_data();
+      params.inputs[i] = Input(i + 1).raw_data();
+      params.outputs[i] = Output(i)->raw_mutable_data();
     }
-    params.size = Output(0)->size();
-    params.meta = Output(0)->meta();
+    params.size = Output(0)->numel();
+    params.meta = Output(0)->dtype();
   }
 
   GlooParameters init_;

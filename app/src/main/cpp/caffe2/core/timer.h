@@ -23,7 +23,8 @@ class Timer {
    */
   inline void Start() { start_time_ = clock::now(); }
   inline float NanoSeconds() {
-    return std::chrono::duration_cast<ns>(clock::now() - start_time_).count();
+    return static_cast<float>(
+        std::chrono::duration_cast<ns>(clock::now() - start_time_).count());
   }
   /**
    * @brief Returns the elapsed time in milliseconds.
@@ -40,7 +41,7 @@ class Timer {
 
  protected:
   std::chrono::time_point<clock> start_time_;
-  DISABLE_COPY_AND_ASSIGN(Timer);
+  C10_DISABLE_COPY_AND_ASSIGN(Timer);
 };
 }
 

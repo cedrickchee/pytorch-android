@@ -1,6 +1,9 @@
 #ifndef CAFFE2_SGD_LEARNING_RATE_FUNCTORS_H_
 #define CAFFE2_SGD_LEARNING_RATE_FUNCTORS_H_
 
+#include <list>
+#include <map>
+
 #include "caffe2/core/context.h"
 #include "caffe2/core/operator.h"
 
@@ -22,6 +25,33 @@ class FixedLearningRate : public LearningRateFunctor<T> {
   T operator()(const int64_t /*iter*/) const override {
     return 1.;
   }
+};
+
+// Alter: alternatate learning rate with active_period and inactive_period.
+// update for for a duration of active_period and then stop for a duration of
+// inactive_period if active_first, and vice versa
+template <typename T>
+class AlternateLearningRate : public LearningRateFunctor<T> {
+ public:
+  AlternateLearningRate(
+      const int64_t active_period,
+      const int64_t inactive_period,
+      const bool active_first)
+      : active_period_(active_period),
+        inactive_period_(inactive_period),
+        active_first_(active_first) {}
+  T operator()(const int64_t iter) const override {
+    if (iter % (active_period_ + inactive_period_) <
+        (active_first_ ? active_period_ : inactive_period_)) {
+      return active_first_ ? 1. : 0.;
+    } else {
+      return active_first_ ? 0. : 1.;
+    };
+  };
+
+  int64_t active_period_;
+  int64_t inactive_period_;
+  bool active_first_;
 };
 
 // Step: return gamma ^ (floor(iter / step))
@@ -67,15 +97,111 @@ class InvLearningRate : public LearningRateFunctor<T> {
 template <typename T>
 class PolyLearningRate : public LearningRateFunctor<T> {
  public:
-  PolyLearningRate(const T power, const int64_t max_iter) 
+  PolyLearningRate(const T power, const int64_t max_iter)
       : power_(power), max_iter_(max_iter) {}
   T operator()(const int64_t iter) const override {
-    return std::pow(1 - T(iter)/T(max_iter_), power_);
+    return std::pow(1 - T(iter) / T(max_iter_), power_);
   }
   T power_;
   uint64_t max_iter_;
 };
 
-}  // namespace caffe2
+// LinearWarmup: return max(iter/num_iter, 1)
+template <typename T>
+class LinearWarmupLearningRate : public LearningRateFunctor<T> {
+ public:
+  LinearWarmupLearningRate(const T start_multiplier, const int64_t num_iter)
+      : start_multiplier_(start_multiplier), num_iter_(num_iter) {}
+  T operator()(const int64_t iter) const override {
+    if (iter >= num_iter_) {
+      return 1.;
+    }
+    return start_multiplier_ + (1. - start_multiplier_) * T(iter) / T(num_iter_);
+  }
+  T start_multiplier_;
+  uint64_t num_iter_;
+};
 
-#endif  // CAFFE2_SGD_LEARNING_RATE_FUNCTORS_H_
+// ConstantWarmup: return scale when iter < num_iter, and 1 otherwise
+template <typename T>
+class ConstantWarmupLearningRate : public LearningRateFunctor<T> {
+ public:
+  ConstantWarmupLearningRate(const T multiplier, const int64_t num_iter)
+      : multiplier_(multiplier), num_iter_(num_iter) {}
+  T operator()(const int64_t iter) const override {
+    if (iter >= num_iter_) {
+      return 1.;
+    }
+    return T(multiplier_);
+  }
+  T multiplier_;
+  uint64_t num_iter_;
+};
+
+// hill: the learning rate changes according to following 3 stages
+// 1) linear warmup (increasing) at first num_iter steps from start_multiplier
+// 2) inverse shrink (decreasing) afterwards (gamma, power)
+// 3) lower bounded by end_multiplier
+template <typename T>
+class HillLearningRate : public LearningRateFunctor<T> {
+ public:
+  HillLearningRate(
+      const int64_t num_iter,
+      const T start_multiplier,
+      const T gamma,
+      const T power,
+      const T end_multiplier)
+      : linear_warmup_lr_(start_multiplier, num_iter),
+        inv_lr_(gamma, power),
+        num_iter_(num_iter),
+        end_multiplier_(end_multiplier) {}
+  T operator()(const int64_t iter) const override {
+    if (iter < num_iter_) {
+      return linear_warmup_lr_(iter);
+    } else {
+      return std::max(end_multiplier_, inv_lr_(iter - num_iter_));
+    }
+  }
+  LinearWarmupLearningRate<T> linear_warmup_lr_;
+  InvLearningRate<T> inv_lr_;
+  int64_t num_iter_;
+  T end_multiplier_;
+};
+
+template <typename T>
+class CompositeLearningRateItem {
+ public:
+  CompositeLearningRateItem(int64_t num_iter, LearningRateFunctor<T>* policy)
+      : num_iter_(num_iter), policy_(policy) {}
+  int64_t num_iter_;
+  LearningRateFunctor<T>* policy_;
+};
+
+// composite: the learning policy changes according to current iteration #
+template <typename T>
+class CompositeLearningRate : public LearningRateFunctor<T> {
+ public:
+  CompositeLearningRate(
+      const std::list<CompositeLearningRateItem<T>>& sub_policies) {
+    DCHECK_GT(sub_policies.size(), 0);
+    int64_t num_iter_start = 1;
+    for (auto it = sub_policies.begin(); it != sub_policies.end(); ++it) {
+      DCHECK_GT(it->num_iter_, 0);
+      sub_policies_[num_iter_start].reset(it->policy_);
+      num_iter_start += it->num_iter_;
+    }
+  }
+  T operator()(const int64_t iter) const override {
+    auto sub_policy = sub_policies_.upper_bound(iter);
+    DCHECK(sub_policy != sub_policies_.begin());
+    --sub_policy;
+    return (*sub_policy->second)(iter);
+  }
+
+ private:
+  std::map<int64_t, std::unique_ptr<LearningRateFunctor<T>>> sub_policies_;
+};
+
+} // namespace caffe2
+
+#endif // CAFFE2_SGD_LEARNING_RATE_FUNCTORS_H_

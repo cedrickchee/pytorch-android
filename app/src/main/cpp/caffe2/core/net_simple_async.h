@@ -3,13 +3,13 @@
 
 #include <vector>
 
+#include "c10/util/Registry.h"
 #include "caffe2/core/common.h"
 #include "caffe2/core/logging.h"
 #include "caffe2/core/net.h"
-#include "caffe2/core/registry.h"
 #include "caffe2/core/tensor.h"
 #include "caffe2/core/workspace.h"
-#include "caffe2/proto/caffe2.pb.h"
+#include "caffe2/proto/caffe2_pb.h"
 
 namespace caffe2 {
 
@@ -23,12 +23,6 @@ class AsyncSimpleNet : public NetBase {
   bool SupportsAsync() override {
     return true;
   }
-  bool RunAsync() override;
-
-  vector<float> TEST_Benchmark(
-      const int warmup_runs,
-      const int main_runs,
-      const bool run_individual) override;
 
   /*
    * This returns a list of pointers to objects stored in unique_ptrs.
@@ -45,9 +39,11 @@ class AsyncSimpleNet : public NetBase {
   }
 
  protected:
+  bool DoRunAsync() override;
+
   vector<unique_ptr<OperatorBase>> operators_;
 
-  DISABLE_COPY_AND_ASSIGN(AsyncSimpleNet);
+  C10_DISABLE_COPY_AND_ASSIGN(AsyncSimpleNet);
 };
 
 } // namespace caffe2

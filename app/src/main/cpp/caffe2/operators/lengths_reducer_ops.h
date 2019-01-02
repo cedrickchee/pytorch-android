@@ -10,7 +10,10 @@ template <
     typename T, // output type
     class InputTypes, // supported input types, such as TensorTypes<float>
     bool USE_WEIGHT = 0, // Whether it is SparseLengthsWeightedSum
-    bool USE_MEAN = 0 // Whether this is SparseLengthsMean
+    bool USE_MEAN = 0, // Whether this is SparseLengthsMean
+    bool USE_POSITIONAL_WEIGHT = 0
+    // USE_WEIGHT = 1 and USE_POSITIONAL_WEIGHT = 1
+    // -> SparseLengthsPositionalWeightedSum
     >
 class CPUSparseLengthsReductionOp : public Operator<CPUContext> {
  public:
@@ -23,7 +26,7 @@ class CPUSparseLengthsReductionOp : public Operator<CPUContext> {
 
   ~CPUSparseLengthsReductionOp() {}
 
-  // Currently, we support float and float16 inputs for input data type, and
+  // Currently, we support float and at::Half inputs for input data type, and
   // int32_t and int64_t for the index type.
 
   bool RunOnDevice() override {
@@ -42,17 +45,16 @@ class CPUSparseLengthsReductionOp : public Operator<CPUContext> {
     auto& indicesInput = Input(INDICES);
     auto& lengthsInput = Input(LENGTHS);
 
-    CAFFE_ENFORCE_EQ(1, indicesInput.ndim(), "INDICES must be a vector");
-    CAFFE_ENFORCE_EQ(1, lengthsInput.ndim(), "LENGTHS must be a vector");
-    const TIndex N = dataInput.dim(0);
+    CAFFE_ENFORCE_EQ(1, indicesInput.dim(), "INDICES must be a vector");
+    CAFFE_ENFORCE_EQ(1, lengthsInput.dim(), "LENGTHS must be a vector");
+    const int64_t N = dataInput.size(0);
     const int D = dataInput.size_from_dim(1);
-    const TIndex M = lengthsInput.dim(0);
-    const TIndex indices_size = indicesInput.size();
+    const int64_t M = lengthsInput.size(0);
+    const int64_t indices_size = indicesInput.numel();
 
-    auto* output = Output(0);
-    auto shape = dataInput.dims();
+    auto shape = dataInput.sizes().vec();
     shape[0] = M;
-    output->Resize(shape);
+    auto* output = Output(0, shape, at::dtype<T>());
     T* out_data = output->template mutable_data<T>();
 
     const InputType* in_data = dataInput.template data<InputType>();
@@ -60,18 +62,21 @@ class CPUSparseLengthsReductionOp : public Operator<CPUContext> {
     const int* lengths = lengthsInput.template data<int>();
     const T* in_weight = nullptr;
 
-    if (USE_WEIGHT) { // static if
+    if (USE_WEIGHT) {
+      // static if
       auto& weightInput = Input(WEIGHT);
-      CAFFE_ENFORCE_EQ(1, weightInput.ndim(), "WEIGHT must be a vector");
-      CAFFE_ENFORCE_EQ(
-          weightInput.size(),
-          indices_size,
-          "Weight should have the same length as indices.");
+      CAFFE_ENFORCE_EQ(1, weightInput.dim(), "WEIGHT must be a vector");
+      if (!USE_POSITIONAL_WEIGHT) {
+        CAFFE_ENFORCE_EQ(
+            weightInput.numel(),
+            indices_size,
+            "Weight should have the same length as indices.");
+      }
       in_weight = weightInput.template data<T>();
     }
 
     // delegate work to perfkernel that branches based on architecture
-    EmbeddingLookup(
+    EmbeddingLookup<IndexType, InputType, T, USE_POSITIONAL_WEIGHT>(
         D,
         M,
         indices_size,
@@ -86,7 +91,6 @@ class CPUSparseLengthsReductionOp : public Operator<CPUContext> {
     return true;
   }
 
- private:
   enum {
     DATA = 0, // Data input.
     WEIGHT = 1, // Weight input used in SparseLengthsWeightedSum

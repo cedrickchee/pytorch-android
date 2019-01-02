@@ -3,15 +3,17 @@
 #include <algorithm>
 #define PROTOBUF_USE_DLLS 1
 #define CAFFE2_USE_LITE_PROTO 1
-#include <caffe2/core/predictor.h>
+
+#include <caffe2/predictor/predictor.h>
 #include <caffe2/core/operator.h>
 #include <caffe2/core/timer.h>
 
 #include "caffe2/core/init.h"
-
+#include <caffe2/core/tensor.h>
 #include <android/asset_manager.h>
 #include <android/asset_manager_jni.h>
 #include <android/log.h>
+#include <ATen/ATen.h>
 #include "classes.h"
 #define IMG_H 227
 #define IMG_W 227
@@ -47,8 +49,8 @@ Java_facebook_f8demo_ClassifyCamera_initCaffe2(
         jobject assetManager) {
     AAssetManager *mgr = AAssetManager_fromJava(env, assetManager);
     alog("Attempting to load protobuf netdefs...");
-    loadToNetDef(mgr, &_initNet,   "squeeze_init_net.pb");
-    loadToNetDef(mgr, &_predictNet,"squeeze_predict_net.pb");
+    loadToNetDef(mgr, &_initNet,   "resnet18_init_net_v1.pb");
+    loadToNetDef(mgr, &_predictNet,"resnet18_predict_net_v1.pb");
     alog("done.");
     alog("Instantiating predictor...");
     _predictor = new caffe2::Predictor(_initNet, _predictNet);
@@ -132,16 +134,16 @@ Java_facebook_f8demo_ClassifyCamera_classificationFromCaffe2(
 
     caffe2::TensorCPU input;
     if (infer_HWC) {
-        input.Resize(std::vector<int>({IMG_H, IMG_W, IMG_C}));
+        input = caffe2::Tensor(std::vector<int>({IMG_H, IMG_W, IMG_C}), caffe2::CPU);
     } else {
-        input.Resize(std::vector<int>({1, IMG_C, IMG_H, IMG_W}));
+        input = caffe2::Tensor(std::vector<int>({1, IMG_C, IMG_H, IMG_W}), caffe2::CPU);
     }
     memcpy(input.mutable_data<float>(), input_data, IMG_H * IMG_W * IMG_C * sizeof(float));
-    caffe2::Predictor::TensorVector input_vec{&input};
-    caffe2::Predictor::TensorVector output_vec;
+    std::vector<caffe2::TensorCPU> input_vec({input});
+    std::vector<caffe2::TensorCPU> output_vec(1);
     caffe2::Timer t;
     t.Start();
-    _predictor->run(input_vec, &output_vec);
+    (*_predictor)(input_vec, &output_vec);
     float fps = 1000/t.MilliSeconds();
     total_fps += fps;
     avg_fps = total_fps / iters_fps;
@@ -151,22 +153,21 @@ Java_facebook_f8demo_ClassifyCamera_classificationFromCaffe2(
     float max[k] = {0};
     int max_index[k] = {0};
     // Find the top-k results manually.
-    if (output_vec.capacity() > 0) {
-        for (auto output : output_vec) {
-            for (auto i = 0; i < output->size(); ++i) {
-                for (auto j = 0; j < k; ++j) {
-                    if (output->template data<float>()[i] > max[j]) {
-                        for (auto _j = k - 1; _j > j; --_j) {
-                            max[_j - 1] = max[_j];
-                            max_index[_j - 1] = max_index[_j];
-                        }
-                        max[j] = output->template data<float>()[i];
-                        max_index[j] = i;
-                        goto skip;
+    for (auto output : output_vec) {
+        auto data = output.data<float>();
+        for (auto i = 0; i < output.size(); ++i) {
+            for (auto j = 0; j < k; ++j) {
+                if (data[i] > max[j]) {
+                    for (auto _j = k - 1; _j > j; --_j) {
+                        max[_j - 1] = max[_j];
+                        max_index[_j - 1] = max_index[_j];
                     }
+                    max[j] = data[i];
+                    max_index[j] = i;
+                    goto skip;
                 }
-                skip:;
             }
+            skip:;
         }
     }
     std::ostringstream stringStream;

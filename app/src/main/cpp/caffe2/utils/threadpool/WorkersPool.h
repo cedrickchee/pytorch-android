@@ -1,8 +1,11 @@
+#pragma once
+
+#include <atomic>
+#include <condition_variable>
+#include <thread>
 #include "caffe2/core/common.h"
 #include "caffe2/core/logging.h"
-#include <atomic>
-#include <thread>
-#include <condition_variable>
+#include "caffe2/utils/thread_name.h"
 
 #if defined(_MSC_VER)
 #include <intrin.h>
@@ -260,6 +263,7 @@ class alignas(kGEMMLOWPCacheLineSize) Worker {
 
   // Thread entry point.
   void ThreadFunc() {
+    setThreadName("CaffeWorkersPool");
     ChangeState(State::Ready);
 
     // Thread main loop
@@ -274,8 +278,8 @@ class alignas(kGEMMLOWPCacheLineSize) Worker {
       switch (state_to_act_upon) {
       case State::HasWork:
         // Got work to do! So do it, and then revert to 'Ready' state.
-        DCHECK(task_);
-        task_->Run();
+        DCHECK(task_.load());
+        (*task_).Run();
         task_ = nullptr;
         ChangeState(State::Ready);
         break;
@@ -295,7 +299,7 @@ class alignas(kGEMMLOWPCacheLineSize) Worker {
   // Called by the master thead to give this worker work to do.
   // It is only legal to call this if the worker
   void StartWork(Task* task) {
-    DCHECK(!task_);
+    DCHECK(!task_.load());
     task_ = task;
     DCHECK(state_.load(std::memory_order_acquire) == State::Ready);
     ChangeState(State::HasWork);
@@ -306,8 +310,7 @@ class alignas(kGEMMLOWPCacheLineSize) Worker {
   std::unique_ptr<std::thread> thread_;
 
   // The task to be worked on.
-  // Visibility of writes to task_ guarded by state_mutex_.
-  Task* task_;
+  std::atomic<Task*> task_;
 
   // The condition variable and mutex guarding state changes.
   std::condition_variable state_cond_;
@@ -330,9 +333,9 @@ class WorkersPool {
     // One of the tasks will be run on the current thread.
     int workers_count = tasks.size() - 1;
     CreateWorkers(workers_count);
-    DCHECK_LE(workers_count, workers_.size());
+    DCHECK_LE(workers_count, (int)workers_.size());
     counter_to_decrement_when_ready_.Reset(workers_count);
-    for (auto task = 1; task < tasks.size(); ++task) {
+    for (size_t task = 1; task < tasks.size(); ++task) {
       workers_[task - 1]->StartWork(tasks[task].get());
     }
     // Execute the remaining workload immediately on the current thread.
@@ -357,7 +360,7 @@ class WorkersPool {
     counter_to_decrement_when_ready_.Wait();
   }
 
-  DISABLE_COPY_AND_ASSIGN(WorkersPool);
+  C10_DISABLE_COPY_AND_ASSIGN(WorkersPool);
   std::vector<std::unique_ptr<Worker, AlignedDeleter<Worker>>> workers_;
   // The BlockingCounter used to wait for the workers.
   BlockingCounter counter_to_decrement_when_ready_;

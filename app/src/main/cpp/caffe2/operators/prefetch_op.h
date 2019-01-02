@@ -30,8 +30,9 @@ class PrefetchOperator : public OperatorBase {
         context_(operator_def.device_option()),
         prefetched_(false),
         prefetch_success_(true),
-        finalize_(false) {
-    context_.SwitchToDevice(0);
+        finalize_(false),
+        no_prefetch_(GetSingleArgument<bool>("no_prefetch", false)) {
+    context_.SwitchToDevice();
   }
 
   virtual ~PrefetchOperator() noexcept {
@@ -61,6 +62,12 @@ class PrefetchOperator : public OperatorBase {
   }
 
   bool Run(int /* unused */ /*stream_id*/) override {
+    if (no_prefetch_) {
+      context_.SwitchToDevice();
+      bool result = Prefetch() && CopyPrefetched();
+      context_.FinishDeviceComputation();
+      return result;
+    }
     // Note(jiayq): We only start the prefetch_thread at the Run() function
     // instead of in the constructor, because the prefetch_thread needs to start
     // after all derived classes' constructors finish.
@@ -68,7 +75,7 @@ class PrefetchOperator : public OperatorBase {
       prefetch_thread_.reset(
           new std::thread([this] { this->PrefetchWorker(); }));
     }
-    context_.SwitchToDevice(0);
+    context_.SwitchToDevice();
     std::unique_lock<std::mutex> lock(prefetch_access_mutex_);
     while (!prefetched_)
       consumer_.wait(lock);
@@ -125,6 +132,9 @@ class PrefetchOperator : public OperatorBase {
   // finalize_ is used to tell the prefetcher to quit.
   std::atomic<bool> finalize_;
   unique_ptr<std::thread> prefetch_thread_;
+
+  // Whether to do prefetching or run this as a normal operator
+  const bool no_prefetch_;
 };
 
 } // namespace caffe2

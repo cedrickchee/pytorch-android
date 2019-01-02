@@ -4,32 +4,27 @@
 #include "caffe2/core/common.h"
 #include "caffe2/core/observer.h"
 
-#ifndef CAFFE2_MOBILE
-#error "mobile build state not defined"
-#endif
-
 #include <climits>
 #include <cstddef>
 #include <mutex>
 #include <typeinfo>
+#include <unordered_set>
 #include <vector>
 
+#include "c10/util/Registry.h"
 #include "caffe2/core/blob.h"
-#include "caffe2/core/registry.h"
 #include "caffe2/core/net.h"
-#include "caffe2/proto/caffe2.pb.h"
+#include "caffe2/proto/caffe2_pb.h"
 #include "caffe2/utils/signal_handler.h"
-#if CAFFE2_MOBILE
 #include "caffe2/utils/threadpool/ThreadPool.h"
-#endif // CAFFE2_MOBILE
 
-CAFFE2_DECLARE_bool(caffe2_print_blob_sizes_at_exit);
+C10_DECLARE_bool(caffe2_print_blob_sizes_at_exit);
 
 namespace caffe2 {
 
 class NetBase;
 
-struct StopOnSignal {
+struct CAFFE2_API StopOnSignal {
   StopOnSignal()
       : handler_(std::make_shared<SignalHandler>(
             SignalHandler::Action::STOP,
@@ -49,7 +44,7 @@ struct StopOnSignal {
  * runtime: (1) all blobs, and (2) all instantiated networks. It is the owner of
  * all these objects and deals with the scaffolding logistics.
  */
-class Workspace {
+class CAFFE2_API Workspace {
  public:
   typedef std::function<bool(int)> ShouldContinue;
   typedef CaffeMap<string, unique_ptr<Blob> > BlobMap;
@@ -57,7 +52,7 @@ class Workspace {
   /**
    * Initializes an empty workspace.
    */
-  Workspace() : root_folder_("."), shared_(nullptr) {}
+  Workspace() : Workspace(".", nullptr) {}
 
   /**
    * Initializes an empty workspace with the given root folder.
@@ -67,7 +62,7 @@ class Workspace {
    * by the workspace.
    */
   explicit Workspace(const string& root_folder)
-      : root_folder_(root_folder), shared_(nullptr) {}
+      : Workspace(root_folder, nullptr) {}
 
   /**
    * Initializes a workspace with a shared workspace.
@@ -78,8 +73,7 @@ class Workspace {
    * and is responsible for making sure that its lifetime is longer than the
    * created workspace.
    */
-  explicit Workspace(const Workspace* shared)
-      : root_folder_("."), shared_(shared) {}
+  explicit Workspace(const Workspace* shared) : Workspace(".", shared) {}
 
   /**
    * Initializes workspace with parent workspace, blob name remapping
@@ -89,11 +83,13 @@ class Workspace {
   Workspace(
       const Workspace* shared,
       const std::unordered_map<string, string>& forwarded_blobs)
-      : root_folder_("."), shared_(nullptr) {
+      : Workspace(".", nullptr) {
     CAFFE_ENFORCE(shared, "Parent workspace must be specified");
     for (const auto& forwarded : forwarded_blobs) {
       CAFFE_ENFORCE(
-          shared->HasBlob(forwarded.second), "Invalid parent workspace blob");
+          shared->HasBlob(forwarded.second),
+          "Invalid parent workspace blob: ",
+          forwarded.second);
       forwarded_blobs_[forwarded.first] =
           std::make_pair(shared, forwarded.second);
     }
@@ -102,21 +98,63 @@ class Workspace {
   /**
    * Initializes a workspace with a root folder and a shared workspace.
    */
-  Workspace(const string& root_folder, Workspace* shared)
-      : root_folder_(root_folder), shared_(shared) {}
+  Workspace(const string& root_folder, const Workspace* shared)
+      : root_folder_(root_folder), shared_(shared), bookkeeper_(bookkeeper()) {
+    std::lock_guard<std::mutex> guard(bookkeeper_->wsmutex);
+    bookkeeper_->workspaces.insert(this);
+  }
 
   ~Workspace() {
     if (FLAGS_caffe2_print_blob_sizes_at_exit) {
       PrintBlobSizes();
     }
+    // This is why we have a bookkeeper_ shared_ptr instead of a naked static! A
+    // naked static makes us vulnerable to out-of-order static destructor bugs.
+    std::lock_guard<std::mutex> guard(bookkeeper_->wsmutex);
+    bookkeeper_->workspaces.erase(this);
   }
 
   /**
-   * Add blob mappings from another workspace
+   * Adds blob mappings from workspace to the blobs from parent workspace.
+   * Creates blobs under possibly new names that redirect read/write operations
+   * to the blobs in the parent workspace.
+   * Arguments:
+   *  parent - pointer to parent workspace
+   *  forwarded_blobs - map from new blob name to blob name in parent's
+   * workspace skip_defined_blob - if set skips blobs with names that already
+   * exist in the workspace, otherwise throws exception
    */
   void AddBlobMapping(
       const Workspace* parent,
-      const std::unordered_map<string, string>& forwarded_blobs);
+      const std::unordered_map<string, string>& forwarded_blobs,
+      bool skip_defined_blobs = false);
+
+  /**
+   * Converts previously mapped tensor blobs to local blobs, copies values from
+   * parent workspace blobs into new local blobs. Ignores undefined blobs.
+   */
+  template <class Context>
+  void CopyForwardedTensors(const std::unordered_set<std::string>& blobs) {
+    for (const auto& blob : blobs) {
+      if (!forwarded_blobs_.count(blob)) {
+        continue;
+      }
+      const auto& ws_blob = forwarded_blobs_[blob];
+      const auto* parent_ws = ws_blob.first;
+      auto* from_blob = parent_ws->GetBlob(ws_blob.second);
+      CAFFE_ENFORCE(from_blob);
+      CAFFE_ENFORCE(
+          from_blob->template IsType<Tensor>(),
+          "Expected blob with tensor value",
+          ws_blob.second);
+      forwarded_blobs_.erase(blob);
+      auto* to_blob = CreateBlob(blob);
+      CAFFE_ENFORCE(to_blob);
+      const auto& from_tensor = from_blob->template Get<Tensor>();
+      auto* to_tensor = BlobGetMutableTensor(to_blob, Context::GetDeviceType());
+      to_tensor->CopyFrom(from_tensor);
+    }
+  }
 
   /**
    * Return list of blobs owned by this Workspace, not including blobs
@@ -162,6 +200,14 @@ class Workspace {
    */
   Blob* CreateBlob(const string& name);
   /**
+   * Similar to CreateBlob(), but it creates a blob in the local workspace even
+   * if another blob with the same name already exists in the parent workspace
+   * -- in such case the new blob hides the blob in parent workspace. If a blob
+   * of the given name already exists in the local workspace, the creation is
+   * skipped and the existing blob is returned.
+   */
+  Blob* CreateLocalBlob(const string& name);
+  /**
    * Remove the blob of the given name. Return true if removed and false if
    * not exist.
    * Will NOT remove from the shared workspace.
@@ -177,6 +223,13 @@ class Workspace {
    * not exist, a nullptr is returned.
    */
   Blob* GetBlob(const string& name);
+
+  /**
+   * Renames a local workspace blob. If blob is not found in the local blob list
+   * or if the target name is already present in local or any parent blob list
+   * the function will throw.
+   */
+  Blob* RenameBlob(const string& old_name, const string& new_name);
 
   /**
    * Creates a network with the given NetDef, and returns the pointer to the
@@ -224,14 +277,12 @@ class Workspace {
   bool RunPlan(const PlanDef& plan_def,
                ShouldContinue should_continue = StopOnSignal{});
 
-#if CAFFE2_MOBILE
   /*
    * Returns a CPU threadpool instace for parallel execution of
    * work. The threadpool is created lazily; if no operators use it,
    * then no threadpool will be created.
    */
   ThreadPool* GetThreadPool();
-#endif
 
   // RunOperatorOnce and RunNetOnce runs an operator or net once. The difference
   // between RunNet and RunNetOnce lies in the fact that RunNet allows you to
@@ -241,22 +292,43 @@ class Workspace {
   bool RunOperatorOnce(const OperatorDef& op_def);
   bool RunNetOnce(const NetDef& net_def);
 
+  /**
+   * Applies a function f on each workspace that currently exists.
+   *
+   * This function is thread safe and there is no race condition between
+   * workspaces being passed to f in this thread and destroyed in another.
+   */
+  template <typename F>
+  static void ForEach(F f) {
+    auto bk = bookkeeper();
+    std::lock_guard<std::mutex> guard(bk->wsmutex);
+    for (Workspace* ws : bk->workspaces) {
+      f(ws);
+    }
+  }
+
  public:
   std::atomic<int> last_failed_op_net_position;
 
  private:
+  struct Bookkeeper {
+    std::mutex wsmutex;
+    std::unordered_set<Workspace*> workspaces;
+  };
+
+  static std::shared_ptr<Bookkeeper> bookkeeper();
+
   BlobMap blob_map_;
   NetMap net_map_;
   const string root_folder_;
   const Workspace* shared_;
   std::unordered_map<string, std::pair<const Workspace*, string>>
       forwarded_blobs_;
-#if CAFFE2_MOBILE
   std::unique_ptr<ThreadPool> thread_pool_;
   std::mutex thread_pool_creation_mutex_;
-#endif // CAFFE2_MOBILE
+  std::shared_ptr<Bookkeeper> bookkeeper_;
 
-  DISABLE_COPY_AND_ASSIGN(Workspace);
+  C10_DISABLE_COPY_AND_ASSIGN(Workspace);
 };
 
 }  // namespace caffe2

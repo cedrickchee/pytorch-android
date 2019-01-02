@@ -1,6 +1,8 @@
 #ifndef CAFFE2_OPERATORS_TRANSPOSE_H_
 #define CAFFE2_OPERATORS_TRANSPOSE_H_
-#define MAX_BLOB_NUM 1024
+
+#include <algorithm>
+#include <vector>
 
 #include "caffe2/core/context.h"
 #include "caffe2/core/operator.h"
@@ -13,52 +15,57 @@ class TransposeOp final : public Operator<Context> {
  public:
   USE_OPERATOR_CONTEXT_FUNCTIONS;
   USE_DISPATCH_HELPER;
+
   TransposeOp(const OperatorDef& operator_def, Workspace* ws)
       : Operator<Context>(operator_def, ws),
-        axes_(OperatorBase::GetRepeatedArgument<int>("axes")) {
+        axes_(this->template GetRepeatedArgument<int>("axes")) {
     // We will check the legality of axes_: it should be from 0 to axes_.size().
-    std::vector<int> axes_sorted(axes_);
+    std::vector<int> axes_sorted = axes_;
     std::sort(axes_sorted.begin(), axes_sorted.end());
-    for (int i = 0; i < axes_sorted.size(); ++i) {
+    for (std::size_t i = 0; i < axes_sorted.size(); ++i) {
       if (axes_sorted[i] != i) {
         CAFFE_THROW("Axes should be a permutation of 0 to ndim.");
       }
     }
   }
-  ~TransposeOp() {}
+
+  ~TransposeOp() = default;
 
   bool RunOnDevice() override {
-    const auto& X = Input(0);
-    auto* Y = Output(0);
-    new_dims_.resize(X.ndim());
-    if (axes_.size() == 0) {
-      axes_.resize(X.ndim());
-      for (int i = 0; i < axes_.size(); ++i) {
-        axes_[i] = axes_.size() - 1 - i;
-      }
-      new_dims_.assign(X.dims().rbegin(), X.dims().rend());
-    } else {
-      CAFFE_ENFORCE_EQ(X.ndim(), axes_.size());
-      for (int i = 0; i < new_dims_.size(); ++i) {
-        new_dims_[i] = X.dim(axes_[i]);
-      }
-    }
-    Y->Resize(new_dims_);
     // Do the actual transpose, which is implemented in DoRunWithType().
-    return DispatchHelper<TensorTypes<float, double, int, long>>::call(
+    return DispatchHelper<TensorTypes<float, double, int, int64_t>>::call(
         this, Input(0));
   }
 
- protected:
+ private:
   template <typename T>
-  bool DoRunWithType();
+  bool DoRunWithType() {
+    const auto& X = Input(0);
+
+    const int ndim = X.dim();
+    if (axes_.empty()) {
+      axes_.resize(ndim);
+      std::iota(axes_.rbegin(), axes_.rend(), 0);
+    } else {
+      CAFFE_ENFORCE_EQ(ndim, axes_.size());
+    }
+    const std::vector<int> X_dims(X.sizes().cbegin(), X.sizes().cend());
+    std::vector<int64_t> Y_dims(ndim);
+    for (int i = 0; i < ndim; ++i) {
+      Y_dims[i] = X_dims[axes_[i]];
+    }
+    auto* Y = Output(0, Y_dims, at::dtype<T>());
+    math::Transpose<T, Context>(
+        X_dims.size(),
+        X_dims.data(),
+        axes_.data(),
+        X.template data<T>(),
+        Y->template mutable_data<T>(),
+        &context_);
+    return true;
+  }
 
   std::vector<int> axes_;
-  std::vector<TIndex> new_dims_;
-  // buffer_ is used in TransposeOp<CUDAContext> so we can obtain a consistent
-  // buffer on the GPU. It is not used in the CPUContext implementation.
-  Tensor<Context> buffer_;
-  TensorCPU buffer_cpu_;
 };
 
 } // namespace caffe2

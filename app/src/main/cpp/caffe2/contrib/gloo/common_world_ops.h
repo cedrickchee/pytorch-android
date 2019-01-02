@@ -47,25 +47,14 @@ class CreateCommonWorld final : public Operator<Context> {
       ws_->CreateBlob(status_blob_);
     }
     initialize();
-
-#if defined(GLOO_USE_MPI) && GLOO_USE_MPI
-    if (mpi_rendezvous_) {
-      mpiInitialize();
-    }
-#endif
   }
 
   virtual ~CreateCommonWorld() {
-#if defined(GLOO_USE_MPI) && GLOO_USE_MPI
-    if (mpi_rendezvous_) {
-      mpiFinalize();
-    }
-#endif
   }
 
   CommonWorld rendezvousWithMPI() {
 #if defined(GLOO_USE_MPI) && GLOO_USE_MPI
-    auto context = std::make_shared<::gloo::mpi::Context>(MPI_COMM_WORLD);
+    auto context = ::gloo::mpi::Context::createManaged();
     if (timeout_ms_ != -1) {
       context->setTimeout(std::chrono::milliseconds(timeout_ms_));
     }
@@ -130,7 +119,7 @@ class CreateCommonWorld final : public Operator<Context> {
       signalFailure(ws_->GetBlob(status_blob_), ex);
       return false;
     } else {
-      throw ex;
+      throw;
     }
   }
 
@@ -219,7 +208,7 @@ class CloneCommonWorld final : public Operator<Context> {
       signalFailure(ws_->GetBlob(status_blob_), ex);
       return false;
     } else {
-      throw ex;
+      throw;
     }
   }
 

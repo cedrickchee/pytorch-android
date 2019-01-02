@@ -32,7 +32,32 @@ class WhileOp final : public Operator<Context> {
   }
 
   USE_OPERATOR_CONTEXT_FUNCTIONS;
-  bool RunOnDevice() override;
+
+  bool RunOnDevice() override {
+    CAFFE_ENFORCE(
+        this->InputIsTensorType(0, Context::GetDeviceType()),
+        "Invalid condition in While operator: tensor expected");
+
+    const auto& condition = Input(0);
+    CAFFE_ENFORCE_EQ(
+        condition.numel(),
+        1,
+        "Invalid condition tensor in While operator: single value expected");
+
+    while (true) {
+      if (cond_net_ && !cond_net_->Run()) {
+        return false;
+      }
+      if (!*condition.template data<bool>()) {
+        return true;
+      }
+      if (!loop_net_->Run()) {
+        return false;
+      }
+    }
+
+    return true;
+  }
 
  private:
   NetDef loop_net_def_;
