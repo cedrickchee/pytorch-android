@@ -95,7 +95,7 @@ cp -r build_android_x86/lib/lib* $AICAMERA_ROOT/app/src/main/jniLibs/x86/
 
 _If you prefer not to build PyTorch from master, I have commited the files for Caffe2 bits into this git repo. Unfortunately, not all files are uploaded to GitHub due to file size limit (see TODO):_
 
-![static/images/github_file_size_limit.png]
+![](static/images/github_file_size_limit.png)
 
 ### Developer Guide
 
