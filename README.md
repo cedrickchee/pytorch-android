@@ -95,9 +95,7 @@ cp -r build_android_x86/lib/lib* $AICAMERA_ROOT/app/src/main/jniLibs/x86/
 
 _If you prefer not to build PyTorch from master, I have commited the files for the Caffe2 bits into this git repo. Unfortunately, not all files are uploaded to GitHub due to file size limit._
 
-![](static/images/github_file_size_limit.png)
-
-_Grab the remaining 3 large files from my [Google Drive](https://drive.google.com/drive/folders/1e1lFa8W2rkA8M7mhahe9VSiSMnl0a4Ab?usp=sharing)._
+_Grab the remaining large files from my [Google Drive](https://drive.google.com/drive/folders/1e1lFa8W2rkA8M7mhahe9VSiSMnl0a4Ab?usp=sharing)._
 
 ### Developer Guide
 
@@ -165,9 +163,9 @@ If building this repo is too much of a trouble for you, we also plan to put this
 
 Visualize SqueezeNet 1.1 prediction network serialized as Protobuf file:
 
-| Before update (Oct 2018)                       | After update (Jan 2019)                        |
-|:----------------------------------------------:|:----------------------------------------------:|
-| ![](static/images/squeeze_predict_net_viz.png) | ![](static/images/squeeze_predict_net_viz.png) |
+| Before update (Oct 2018)                       | After update (Jan 2019)                           |
+|:----------------------------------------------:|:-------------------------------------------------:|
+| ![](static/images/squeeze_predict_net_viz.png) | ![](static/images/squeeze_predict_net_v1_viz.png) |
 
 ## Performance
 
