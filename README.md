@@ -8,7 +8,7 @@ _The source code for the demo in this repo was originally based on [AICamera rep
 
 **Project Status**:
 
--2019-05-13:
+- 2019-05-13:
   - Introducing [**PyTorch Lite**](https://github.com/cedrickchee/pytorch-lite) — a lightweight machine learning framework for ON-DEVICE mobile inference. No cumbersome ONNX, no learning Caffe2. Just PyTorch and libtorch.
 - 2018-12-31:
   - PyTorch core maintainers have updated AICamera example to work with latest PyTorch master. Once that PR is merged into PyTorch master, you can use the README below to get a working Android app, including changing the Protobuf with your own `init.pb` / `predict.pb` files.
