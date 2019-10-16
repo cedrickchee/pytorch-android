@@ -1,3 +1,9 @@
+# Deprecation Notice
+
+As of [this announcement](https://pytorch.org/blog/pytorch-1-dot-3-adds-mobile-privacy-quantization-and-named-tensors/) PyTorch 1.3 now officialy supports an end-to-end workflow from Python to deployment on iOS and Android through [**PyTorch Mobile**](https://pytorch.org/mobile/home/). Thank you for your interest with this project.
+
+---
+
 # PyTorch on Android
 
 PyTorch on Android is a project to demo how to use [PyTorch](https://pytorch.org/) **and ONNX** to build an Android mobile application doing real time object classification.
